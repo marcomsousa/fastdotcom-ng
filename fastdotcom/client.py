@@ -208,9 +208,13 @@ class _FastTCPConnector(aiohttp.TCPConnector):
         *,
         should_close: bool = False,
     ) -> None:
-        """Abort SSL transport before releasing closed/cancelled HTTPS streams."""
-        if should_close and key.is_ssl and protocol.transport is not None:
-            protocol.transport.abort()
+        """Cancel orphaned drain waiter and abort SSL transport on forced release."""
+        if should_close:
+            waiter = getattr(protocol, "_drain_waiter", None)
+            if isinstance(waiter, asyncio.Future) and not waiter.done():
+                waiter.cancel()
+            if key.is_ssl and protocol.transport is not None:
+                protocol.transport.abort()
         super()._release(key, protocol, should_close=should_close)
 
 

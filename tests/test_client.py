@@ -673,30 +673,39 @@ def test_orchestrate_peak_fallback(mock_fast_server: MockFastServer) -> None:
 
 
 async def test_fast_tcp_connector_aborts_ssl_on_forced_release() -> None:
-    """_FastTCPConnector aborts SSL transports only when should_close is True."""
+    """_FastTCPConnector cancels drain waiters and aborts SSL on forced release."""
+    loop = asyncio.get_running_loop()
     connector = _FastTCPConnector()
     try:
         with patch.object(aiohttp.TCPConnector, "_release") as super_release:
             ssl_key = Mock(is_ssl=True)
             plain_key = Mock(is_ssl=False)
 
+            waiter_a: asyncio.Future[None] = loop.create_future()
             transport_a = Mock()
-            proto_a = Mock(transport=transport_a)
+            proto_a = Mock(transport=transport_a, _drain_waiter=waiter_a)
             connector._release(ssl_key, proto_a, should_close=True)
+            assert waiter_a.cancelled()
             transport_a.abort.assert_called_once()
 
+            waiter_b: asyncio.Future[None] = loop.create_future()
+            waiter_b.set_result(None)
             transport_b = Mock()
-            proto_b = Mock(transport=transport_b)
-            connector._release(ssl_key, proto_b, should_close=False)
+            proto_b = Mock(transport=transport_b, _drain_waiter=waiter_b)
+            connector._release(plain_key, proto_b, should_close=True)
+            assert not waiter_b.cancelled()
             transport_b.abort.assert_not_called()
 
-            transport_c = Mock()
-            proto_c = Mock(transport=transport_c)
-            connector._release(plain_key, proto_c, should_close=True)
-            transport_c.abort.assert_not_called()
+            proto_c = Mock(transport=None, _drain_waiter=None)
+            connector._release(ssl_key, proto_c, should_close=True)
 
-            proto_none = Mock(transport=None)
-            connector._release(ssl_key, proto_none, should_close=True)
+            waiter_d: asyncio.Future[None] = loop.create_future()
+            transport_d = Mock()
+            proto_d = Mock(transport=transport_d, _drain_waiter=waiter_d)
+            connector._release(ssl_key, proto_d, should_close=False)
+            assert not waiter_d.cancelled()
+            transport_d.abort.assert_not_called()
+            waiter_d.cancel()
 
             assert super_release.call_count == 4
     finally:
