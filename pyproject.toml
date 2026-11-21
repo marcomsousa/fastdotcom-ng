@@ -7,7 +7,7 @@ packages = ["fastdotcom"]
 
 [project]
 name = "fastdotcom-ng"
-version = "1.0.0"
+version = "1.0.1"
 description = "Clean-room async Python library and CLI to measure Internet speed with Fast.com (Home Assistant drop-in compatible)"
 readme = "README.md"
 requires-python = ">=3.11"

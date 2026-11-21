@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-21
+
+### Fixed
+- Cancel orphaned `aiohttp` `BaseProtocol._drain_waiter` futures in `_FastTCPConnector._release` before aborting SSL transports during upload cancellation, eliminating `Future exception was never retrieved` notices under `aiohttp 3.13.x` (Home Assistant) while maintaining zero `ResourceWarning`s.
+
+### Changed
+- Restricted live Fast.com smoke test (`tests/test_real_api_calls.py`) to tiny 4 KiB single-connection byte-range probes (`< 1 MiB` total) for minimal CI runner bandwidth.
+
 ## [1.0.0] - 2026-11-21
 
 ### Added
