@@ -1,31 +1,57 @@
-"""Live integration tests against real Fast.com endpoints (deselected by default)."""
+"""Minimal-bandwidth live Fast.com protocol smoke tests (deselected by default)."""
 
 from __future__ import annotations
 
 import pytest
 
-from fastdotcom import async_fast_com, fast_com
+from fastdotcom import FastDotComClient, to_range_url
 
 
 @pytest.mark.real_api_call
-async def test_real_async_fast_com() -> None:
-    """Run an end-to-end async speedtest against live fast.com."""
-    result = await async_fast_com(min_time=3.0, max_time=8.0, ping_count=3)
-    assert result.download_speed > 0
-    assert result.upload_speed > 0
-    assert result.unloaded_ping > 0
-    assert result.loaded_ping > 0
-    assert result.bytes_downloaded > 0
-    assert result.bytes_uploaded > 0
-    assert len(result.targets) >= 1
+async def test_real_fast_com_protocol_smoke() -> None:
+    """Verify live Fast.com protocol compatibility using minimal (<1 MiB) traffic."""
+    async with FastDotComClient() as client:
+        token = await client.get_token()
+        assert len(token) > 0
 
+        _, targets = await client.get_targets(token, url_count=1)
+        assert len(targets) >= 1
+        assert targets[0].url.startswith("https://")
 
-@pytest.mark.real_api_call
-def test_real_sync_fast_com() -> None:
-    """Run the drop-in synchronous fast_com wrapper against live fast.com."""
-    metrics = fast_com(max_time=5.0, ping_count=3)
-    assert metrics["success"] == 1
-    assert metrics["download_speed"] > 0
-    assert metrics["upload_speed"] > 0
-    assert metrics["unloaded_ping"] > 0
-    assert metrics["loaded_ping"] > 0
+        unloaded_ms, unloaded_samples = await client.measure_latency(
+            targets[0].url,
+            count=2,
+            warmup=True,
+        )
+        assert unloaded_ms > 0
+        assert len(unloaded_samples) == 2
+
+        tiny_download_url = to_range_url(targets[0].url, 0, 4095)
+        dl_mbps, dl_bytes, loaded_ms, loaded_samples = await client.measure_download(
+            [tiny_download_url],
+            min_time=0.1,
+            max_time=0.3,
+            connections_min=1,
+            connections_max=1,
+            chunk_size=4096,
+            sample_interval=0.05,
+            measure_loaded_latency=True,
+            ping_interval=0.05,
+        )
+        assert dl_mbps > 0
+        assert 0 < dl_bytes < 2 * 1024 * 1024
+        assert loaded_ms > 0
+        assert len(loaded_samples) >= 1
+
+        ul_mbps, ul_bytes = await client.measure_upload(
+            [targets[0]],
+            min_time=0.1,
+            max_time=0.3,
+            connections_min=1,
+            connections_max=1,
+            chunk_size=4096,
+            payload_size=4096,
+            sample_interval=0.05,
+        )
+        assert ul_mbps > 0
+        assert 0 < ul_bytes < 2 * 1024 * 1024
